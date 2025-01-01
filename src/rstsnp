@@ -1,0 +1,94 @@
+#!/bin/bash
+
+if [ -z "$1" ] ; then
+	FILEPATH="$(pwd -P)"
+else
+	FILEPATH="$(readlink -f "$1")"
+fi
+
+if [ ! -e "$FILEPATH" ] ; then
+	echo file $FILEPATH does not exist
+	exit 1
+fi
+
+FILEPATH="${FILEPATH%/}"
+
+#find if there is any .snapshot directory in the directory tree
+RELPATH="${FILEPATH##*/}"
+PARENTDIR="${FILEPATH%/*}"
+DIRPATH="$PARENTDIR"
+
+while [ ! -d "$DIRPATH/.snapshots" -a -n "$DIRPATH" ] ; do
+	RELPATH="${DIRPATH##*/}/$RELPATH"
+	DIRPATH="${DIRPATH%/*}"
+done
+if [ ! -d "$DIRPATH/.snapshots" ] ; then
+	echo no snapshot directory exists
+	exit 2
+fi
+
+#go through all existing snapshot directories and get their creation time
+OFSTAT=$(stat  -c "%s %Y" "$FILEPATH")
+SORTHELP=();
+for SNAPSHOT in "$DIRPATH/.snapshots/"* ; do
+	SNTIME=$(stat -c "%W" "$SNAPSHOT")
+	SORTHELP+=("$SNTIME|$SNAPSHOT");
+done
+
+#iterate snapshot directories in order of creation time
+DMENUOPT="Cancel"
+while read -d $'\0' ELEM ; do
+	SNAPSHOT="${ELEM#*|}"
+	SNTIME="${ELEM%%|*}"
+	SNNUM="${SNAPSHOT##*/}"
+	if [ -e "$SNAPSHOT/snapshot/$RELPATH" ] ; then
+		SFSTAT=$(stat -c "%s %Y" "$SNAPSHOT/snapshot/$RELPATH")
+		SNAPDATE=$(date --date="@$SNTIME" +"%b %d %H:%M")
+		SFDATE=$(date --date="@$(stat -c "%Y" "$SNAPSHOT/snapshot/$RELPATH")" +"%b %d %H:%M")
+		if [ "$SFSTAT" = "$OFSTAT" ] ; then
+			TEXT="$SNAPDATE (unchanged)"
+		else
+			TEXT="$SFDATE snapshot at $SNAPDATE"
+		fi
+		DMENUOPT="$DMENUOPT\n$SNNUM|$TEXT"
+	fi
+done < <(printf '%s\0' "${SORTHELP[@]}" | sort -z -r)
+
+if [ "$DMENUOPT" = "Cancel" ] ; then
+	echo no snapshot for this file
+	exit 3
+fi
+
+#do the DMENU thing
+SELECTED=$(echo -e "$DMENUOPT" | dmenu)
+
+SELSNNUM="${SELECTED%%|*}"
+
+if [ "$SELSNNUM" = "Cancel" -o -z "$SELSNNUM" ] ; then
+	echo "user cancelled"
+	exit 1000
+fi
+
+if [ ! -e "$DIRPATH/.snapshots/$SELSNNUM" ] ; then
+	echo user entered invalid things
+	exit 4
+fi
+
+SELSTEXT="${SELECTED##*|}"
+SELSTEXT="${SELSTEXT##* at }"
+SELSTEXT="${SELSTEXT% (*}"
+PATHNOEXT="${FILEPATH%.*}"
+EXTENSION="${FILEPATH##*.}"
+
+if [ "$EXTENSION" = "$FILEPATH" ] ; then
+	EXTENSION=""
+else
+	EXTENSION=".$EXTENSION"
+fi
+
+FROMPATH="$DIRPATH/.snapshots/$SELSNNUM/snapshot/$RELPATH"
+TOPATH="$PATHNOEXT.${SELSTEXT}.restore${EXTENSION}"
+echo "copy from: $FROMPATH"
+echo "copy to: $TOPATH"
+
+cp -r "$FROMPATH" "$TOPATH"
