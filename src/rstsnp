@@ -43,8 +43,8 @@ while read -d $'\0' ELEM ; do
 	SNNUM="${SNAPSHOT##*/}"
 	if [ -e "$SNAPSHOT/snapshot/$RELPATH" ] ; then
 		SFSTAT=$(stat -c "%s %Y" "$SNAPSHOT/snapshot/$RELPATH")
-		SNAPDATE=$(date --date="@$SNTIME" +"%b %d %H:%M")
-		SFDATE=$(date --date="@$(stat -c "%Y" "$SNAPSHOT/snapshot/$RELPATH")" +"%b %d %H:%M")
+		SNAPDATE=$(date --date="@$SNTIME" +"%b %d %H%M")
+		SFDATE=$(date --date="@$(stat -c "%Y" "$SNAPSHOT/snapshot/$RELPATH")" +"%b %d %H%M")
 		if [ "$SFSTAT" = "$OFSTAT" ] ; then
 			TEXT="$SNAPDATE (unchanged)"
 		else
